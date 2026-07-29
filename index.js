@@ -156,6 +156,11 @@ async function pollKeywordsOnce(state) {
 }
 
 async function main() {
+  if (process.env.PAUSED === 'true') {
+    console.log('x-listening is PAUSED (PAUSED=true). No API calls will be made. Set PAUSED=false or remove the variable to resume.');
+    return;
+  }
+
   const keywordStatus = KEYWORD_POLL_INTERVAL_MS > 0
     ? `every ${KEYWORD_POLL_INTERVAL_MS / 1000}s`
     : 'PAUSED';
