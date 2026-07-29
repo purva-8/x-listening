@@ -6,8 +6,9 @@ import keywords from './keywords.json' with { type: 'json' };
 
 const API_KEY = process.env.TWITTERAPIS_KEY;
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
-const ACCOUNT_POLL_INTERVAL_MS = Number(process.env.ACCOUNT_POLL_INTERVAL_MS ?? 300000);
-const KEYWORD_POLL_INTERVAL_MS = Number(process.env.KEYWORD_POLL_INTERVAL_MS ?? 0); // 0 = disabled/paused
+const ACCOUNT_POLL_INTERVAL_MS = Number(process.env.ACCOUNT_POLL_INTERVAL_MS ?? 600000); // 10 min
+const KEYWORD_POLL_INTERVAL_MS = Number(process.env.KEYWORD_POLL_INTERVAL_MS ?? 1200000); // 20 min (0 = disabled/paused)
+const NEGATIVE_FILTER_TERMS = ['hiring', 'hire', 'job', 'jobs', 'recruiting', 'recruiter', 'we\'re hiring'];
 const STATE_FILE = new URL('./state.json', import.meta.url);
 
 if (!API_KEY || !SLACK_WEBHOOK_URL) {
@@ -48,16 +49,25 @@ async function postToSlack(username, tweet) {
   await sendToSlack(body);
 }
 
+function isNegativeMatch(text) {
+  const lower = (text ?? '').toLowerCase();
+  return NEGATIVE_FILTER_TERMS.some((term) => lower.includes(term));
+}
+
 async function fetchLatestForKeyword(keyword) {
+  const exclusions = NEGATIVE_FILTER_TERMS.map((t) => `-${t.includes(' ') ? `"${t}"` : t}`).join(' ');
+  const query = `${keyword} ${exclusions}`;
   const res = await fetch(
-    `https://api.twitterapis.com/twitter/tweet/advanced_search?query=${encodeURIComponent(keyword)}`,
+    `https://api.twitterapis.com/twitter/tweet/advanced_search?query=${encodeURIComponent(query)}`,
     { headers: { Authorization: `Bearer ${API_KEY}` } }
   );
   if (!res.ok) {
     throw new Error(`TwitterAPIs.com error for keyword "${keyword}": ${res.status} ${await res.text()}`);
   }
   const data = await res.json();
-  return data?.tweets ?? [];
+  const tweets = data?.tweets ?? [];
+  // client-side safety net in case the search-operator exclusion isn't honored server-side
+  return tweets.filter((t) => !isNegativeMatch(t.text ?? t.full_text));
 }
 
 async function postKeywordMatchToSlack(keyword, tweet) {
