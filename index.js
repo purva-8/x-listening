@@ -6,7 +6,8 @@ import keywords from './keywords.json' with { type: 'json' };
 
 const API_KEY = process.env.TWITTERAPIS_KEY;
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
-const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 300000);
+const ACCOUNT_POLL_INTERVAL_MS = Number(process.env.ACCOUNT_POLL_INTERVAL_MS ?? 300000);
+const KEYWORD_POLL_INTERVAL_MS = Number(process.env.KEYWORD_POLL_INTERVAL_MS ?? 0); // 0 = disabled/paused
 const STATE_FILE = new URL('./state.json', import.meta.url);
 
 if (!API_KEY || !SLACK_WEBHOOK_URL) {
@@ -145,12 +146,20 @@ async function pollKeywordsOnce(state) {
 }
 
 async function main() {
-  console.log(`Starting x-listening. Tracking ${accounts.length} accounts + ${keywords.length} keywords, polling every ${POLL_INTERVAL_MS / 1000}s.`);
+  const keywordStatus = KEYWORD_POLL_INTERVAL_MS > 0
+    ? `every ${KEYWORD_POLL_INTERVAL_MS / 1000}s`
+    : 'PAUSED';
+  console.log(`Starting x-listening. Tracking ${accounts.length} accounts (every ${ACCOUNT_POLL_INTERVAL_MS / 1000}s) + ${keywords.length} keywords (${keywordStatus}).`);
   let state = await loadState();
   await pollOnce(state); // seed state on first run so we don't dump history into Slack
-  await pollKeywordsOnce(state);
-  setInterval(() => pollOnce(state), POLL_INTERVAL_MS);
-  setInterval(() => pollKeywordsOnce(state), POLL_INTERVAL_MS);
+  setInterval(() => pollOnce(state), ACCOUNT_POLL_INTERVAL_MS);
+
+  if (KEYWORD_POLL_INTERVAL_MS > 0) {
+    await pollKeywordsOnce(state);
+    setInterval(() => pollKeywordsOnce(state), KEYWORD_POLL_INTERVAL_MS);
+  } else {
+    console.log('Keyword sweep is paused (KEYWORD_POLL_INTERVAL_MS not set).');
+  }
 }
 
 main();
